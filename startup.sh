@@ -81,8 +81,6 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       -v /lib/modules:/lib/modules:ro \
       --cap-add=NET_ADMIN \
       --cap-add=SYS_MODULE \
-      --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
-      --sysctl="net.ipv4.ip_forward=1" \
       --restart always \
       ghcr.io/wg-easy/wg-easy
 fi
