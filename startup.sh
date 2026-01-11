@@ -65,17 +65,18 @@ echo ""
 read -p "Do you want to setup WireGuard (wg-easy)? (y/n): " install_wg
 if [[ "$install_wg" =~ ^[Yy]$ ]]; then    
     read -p "Enter your VPN Domain (Grey Cloud, e.g., vpn.abc.com): " WG_DOMAIN
-    read -p "Enter Admin Username [admin]: " WG_USER
-    WG_USER=${WG_USER:-admin}
     read -s -p "Enter Admin Password: " WG_PASSWORD
+
+    echo "--- Generating Password Hash ---"
+    PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync('$WG_PASSWORD', 10); console.log('\'' + hash + '\'');")
+    
     echo ""
     sudo docker run -d \
       --name wg-easy \
       --network host \
-      --env WG_HOST="vpn.ackaboo.com" \
-      --env PASSWORD="YOUR_PASSWORD" \
+      --env WG_HOST="$WG_DOMAIN" \
+      --env PASSWORD_HASH="$PASSWORD_HASH" \
       --env WG_PORT=51000 \
-      --env WG_CONFIG_PORT=51821 \
       --env INSECURE=true \
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
