@@ -12,7 +12,7 @@ echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
 # 2. Install Basic Utilities
-echo "--- Installing Basic Tools (git, nano, python, net-tools) ---"
+echo "--- Installing Basic Tools ---"
 sudo apt install -y git nano python3 python3-pip net-tools build-essential ufw ca-certificates curl
 
 # 3. Setup SSH Public Keys (Idempotent)
@@ -20,25 +20,32 @@ echo "--- Configuring SSH Keys ---"
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys
-
-# Fetch keys from GitHub and only add if they don't already exist
 curl -sL https://github.com/ashish-koshy.keys | while read -r key; do
     if ! grep -qF "$key" ~/.ssh/authorized_keys; then
         echo "$key" >> ~/.ssh/authorized_keys
-        echo "Added new key from GitHub."
     fi
 done
 chmod 600 ~/.ssh/authorized_keys
 
-# 4. Configure Firewall (UFW)
-echo "--- Configuring Firewall ---"
+# 4. Configure UFW NAT (The "Back Door" Fix for AWS)
+echo "--- Configuring UFW for NAT Masquerade ---"
+# Change DEFAULT_FORWARD_POLICY to ACCEPT
+sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+
+# Inject the NAT rules into the top of before.rules if not already there
+if ! grep -q "*nat" /etc/ufw/before.rules; then
+    sudo sed -i '1i # NAT rules\n*nat\n:POSTROUTING ACCEPT [0:0]\n-A POSTROUTING -o ens5 -j MASQUERADE\nCOMMIT\n' /etc/ufw/before.rules
+fi
+
+# 5. Standard Firewall Rules
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
-sudo ufw allow 51000/udp   # WireGuard VPN Port
+sudo ufw allow 51000/udp   # WireGuard UDP
+sudo ufw allow 51821/tcp   # Web UI
 sudo ufw --force enable
 
-# 5. Install Docker Engine
+# 6. Install Docker Engine
 echo "--- Installing Docker Engine ---"
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -54,27 +61,21 @@ EOF
 
 sudo apt update -y
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# 6. Configure Docker Permissions
-echo "--- Configuring Docker permissions ---"
-sudo groupadd -f docker
 sudo usermod -aG docker $USER
 
-# 7. Optional WireGuard Setup (wg-easy)
+# 7. WireGuard Setup (wg-easy)
 echo ""
 read -p "Do you want to setup WireGuard (wg-easy)? (y/n): " install_wg
 if [[ "$install_wg" =~ ^[Yy]$ ]]; then    
-    read -p "Enter your VPN Domain: " WG_DOMAIN
+    read -p "Enter your VPN Domain (e.g., vpn.ackaboo.com): " WG_DOMAIN
     read -s -p "Enter Admin Password: " WG_PASSWORD
     echo ""
 
-    echo "--- Generating Password Hash ---"
-    # We generate the hash and ensure no extra whitespace
+    echo "--- Generating Secure Password Hash ---"
+    # Using the node method to ensure $ characters aren't mangled
     WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));" | tr -d '\r\n')
     
-    echo "--- Starting wg-easy ---"
     sudo docker rm -f wg-easy || true
-    
     sudo docker run -d \
       --name wg-easy \
       --network host \
@@ -82,6 +83,7 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       --env PASSWORD_HASH="${WGPW_HASH}" \
       --env WG_PORT=51000 \
       --env INSECURE=true \
+      --env WG_MTU=1280 \
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
       --cap-add=NET_ADMIN \
@@ -90,21 +92,18 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       ghcr.io/wg-easy/wg-easy
 fi
 
-# 8. Optional Cloudflared Tunnel Setup
+# 8. Cloudflared Tunnel Setup
 echo ""
-read -p "Do you want to install a NEW Cloudflare Tunnel container? (y/n): " install_cf
+read -p "Do you want to install Cloudflared? (y/n): " install_cf
 if [[ "$install_cf" =~ ^[Yy]$ ]]; then
     read -p "Enter your Cloudflare Tunnel Token: " CF_TOKEN
+    sudo docker rm -f cloudflared || true
     sudo docker run -d \
       --name cloudflared \
       --network host \
       --restart always \
       cloudflare/cloudflared:latest \
       tunnel --no-autoupdate run --token "$CF_TOKEN"
-    echo "--- Cloudflared container started ---"
-else
-    echo "--- Skipping Tunnel installation (assuming existing setup) ---"
 fi
 
-echo ""
 echo "--- Setup Complete! ---"
