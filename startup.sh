@@ -93,6 +93,7 @@ if [[ "$install_cf" =~ ^[Yy]$ ]]; then
     read -p "Enter your Cloudflare Tunnel Token: " CF_TOKEN
     sudo docker run -d \
       --name cloudflared \
+      --network host \
       --restart always \
       cloudflare/cloudflared:latest \
       tunnel --no-autoupdate run --token "$CF_TOKEN"
