@@ -63,17 +63,12 @@ sudo usermod -aG docker $USER
 # 7. Optional WireGuard Setup (wg-easy)
 echo ""
 read -p "Do you want to setup WireGuard (wg-easy)? (y/n): " install_wg
-if [[ "$install_wg" =~ ^[Yy]$ ]]; then
-    # Detect Private IP for Tunnel Routing
-    PRIVATE_IP=$(hostname -I | awk '{print $1}')
-    
+if [[ "$install_wg" =~ ^[Yy]$ ]]; then    
     read -p "Enter your VPN Domain (Grey Cloud, e.g., vpn.abc.com): " WG_DOMAIN
     read -p "Enter Admin Username [admin]: " WG_USER
     WG_USER=${WG_USER:-admin}
     read -s -p "Enter Admin Password: " WG_PASSWORD
     echo ""
-
-    echo "--- Starting wg-easy on Private IP: $PRIVATE_IP ---"
     sudo docker run -d \
       --name wg-easy \
       --env INIT_ENABLED=true \
@@ -85,7 +80,7 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
       -p 51000:51000/udp \
-      -p ${PRIVATE_IP}:51821:51821/tcp \
+      -p 172.17.0.1:51821:51821/tcp \
       --cap-add=NET_ADMIN \
       --cap-add=SYS_MODULE \
       --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
@@ -111,7 +106,3 @@ fi
 
 echo ""
 echo "--- Setup Complete! ---"
-echo "VERIFICATION STEPS:"
-echo "1. If using a Tunnel, point the Service URL to: http://${PRIVATE_IP:-[PRIVATE_IP]}:51821"
-echo "2. Run 'newgrp docker' to use docker without sudo in this session."
-echo "3. Status check: docker ps"
