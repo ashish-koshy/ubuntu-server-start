@@ -68,14 +68,14 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
     read -s -p "Enter Admin Password: " WG_PASSWORD
 
     echo "--- Generating Password Hash ---"
-    PASSWORD_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); const hash = bcrypt.hashSync('$WG_PASSWORD', 10); console.log('\'' + hash + '\'');")
+    WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));")
     
     echo ""
     sudo docker run -d \
       --name wg-easy \
       --network host \
       --env WG_HOST="$WG_DOMAIN" \
-      --env PASSWORD_HASH="$PASSWORD_HASH" \
+      --env PASSWORD_HASH='$WGPW_HASH' \
       --env WG_PORT=51000 \
       --env INSECURE=true \
       -v ~/.wg-easy:/etc/wireguard \
