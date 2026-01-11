@@ -71,16 +71,14 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
     echo ""
     sudo docker run -d \
       --name wg-easy \
-      --env INIT_ENABLED=true \
-      --env INIT_USERNAME="$WG_USER" \
-      --env INIT_PASSWORD="$WG_PASSWORD" \
-      --env WG_HOST="$WG_DOMAIN" \
+      --network host \
+      --env WG_HOST="vpn.ackaboo.com" \
+      --env PASSWORD="YOUR_PASSWORD" \
       --env WG_PORT=51000 \
+      --env WG_CONFIG_PORT=51821 \
       --env INSECURE=true \
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
-      -p 51000:51000/udp \
-      -p 172.17.0.1:51821:51821/tcp \
       --cap-add=NET_ADMIN \
       --cap-add=SYS_MODULE \
       --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
