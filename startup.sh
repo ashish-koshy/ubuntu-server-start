@@ -82,7 +82,6 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       --env WG_HOST="$WG_DOMAIN" \
       --env PASSWORD_HASH="${WGPW_HASH}" \
       --env WG_PORT=51000 \
-      --env INSECURE=true \
       --env WG_MTU=1280 \
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
