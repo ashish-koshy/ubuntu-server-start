@@ -83,6 +83,7 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       --env PASSWORD_HASH="${WGPW_HASH}" \
       --env WG_PORT=51000 \
       --env WG_MTU=1280 \
+       --env INSECURE=true \
       -v ~/.wg-easy:/etc/wireguard \
       -v /lib/modules:/lib/modules:ro \
       --cap-add=NET_ADMIN \
