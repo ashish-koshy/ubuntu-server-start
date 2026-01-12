@@ -16,6 +16,10 @@ if ! [ -x "$(command -v docker)" ]; then
     sudo usermod -aG docker $USER || true
 fi
 
+echo "--- Cleaning up ports and old containers ---"
+sudo docker rm -f wg-easy caddy || true
+sudo fuser -k 51000/udp || true
+
 # 3. Create the Docker Bridge Network
 # This allows Caddy to find wg-easy by its container name
 sudo docker network create vpn_network || true
