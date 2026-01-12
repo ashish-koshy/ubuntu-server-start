@@ -1,51 +1,34 @@
 #!/bin/bash
-
-# Exit immediately if a command exits with a non-zero status
 set -e
 
 echo "--- Starting Machine Setup ---"
 
-# 1. Update package index and Enable IP Forwarding
-echo "--- Updating System & Enabling IP Forwarding ---"
+# 1. System Prep
 sudo apt update -y
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# 2. Install Basic Utilities & Docker
-echo "--- Installing Tools & Docker Engine ---"
+# 2. Tools & Docker (Standard Install)
 sudo apt install -y git curl ufw ca-certificates build-essential
+if ! [ -x "$(command -v docker)" ]; then
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    sudo usermod -aG docker $USER
+fi
 
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt update -y
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo usermod -aG docker $USER
-
-# 3. Setup Project Directory
 mkdir -p ~/wireguard-stack
 cd ~/wireguard-stack
 
-# 4. WireGuard + Caddy Setup (Interactive)
+# 3. WireGuard + Caddy Setup
 echo ""
-read -p "Do you want to setup WireGuard (wg-easy) with Caddy? (y/n): " install_wg
+read -p "Setup WireGuard & Caddy? (y/n): " install_wg
 if [[ "$install_wg" =~ ^[Yy]$ ]]; then    
-    read -p "Enter your VPN Domain (e.g., vpn.ackaboo.com): " WG_DOMAIN
-    read -p "Enter your Email (for SSL certificates): " WG_EMAIL
-    read -s -p "Enter Admin Password: " WG_PASSWORD
+    read -p "Domain (e.g., vpn.ackaboo.com): " WG_DOMAIN
+    read -p "Email: " WG_EMAIL
+    read -s -p "Admin Password: " WG_PASSWORD
     echo ""
 
-    echo "--- Generating Secure Password Hash ---"
-    # Generate hash once and store in variable
+    # Generate hash
     WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:latest node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));")
     
     # Create Caddyfile
@@ -53,14 +36,12 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
 {
     email $WG_EMAIL
 }
-
 $WG_DOMAIN {
     reverse_proxy wg-easy:51821
 }
 EOF
 
-    # Create docker-compose.yml 
-    # Note: We use 'EOF' in quotes to prevent Bash from mangling the PASSWORD_HASH
+    # Create compose.yml - Using 'EOF' in quotes stops the password bug
     cat <<'EOF' > compose.yml
 services:
   caddy:
@@ -83,8 +64,8 @@ services:
     container_name: wg-easy
     restart: unless-stopped
     environment:
-      - WG_HOST=${WG_HOST_ENV}
-      - PASSWORD_HASH=${WG_PASS_ENV}
+      - WG_HOST=${WG_HOST_PLACEHOLDER}
+      - PASSWORD_HASH=${WG_PASS_PLACEHOLDER}
       - WG_PORT=51820
     volumes:
       - ./wg_etc:/etc/wireguard
@@ -108,37 +89,26 @@ volumes:
   caddy_config:
 EOF
 
-    # Inject variables into the compose file safely using envsubst or sed
-    # This avoids the $ stripping issue entirely
-    sed -i "s|\${WG_HOST_ENV}|$WG_DOMAIN|g" compose.yml
-    sed -i "s|\${WG_PASS_ENV}|$WGPW_HASH|g" compose.yml
+    # Manually inject the values to ensure the $ symbols in the hash are preserved
+    sed -i "s|\${WG_HOST_PLACEHOLDER}|$WG_DOMAIN|g" compose.yml
+    sed -i "s|\${WG_PASS_PLACEHOLDER}|$WGPW_HASH|g" compose.yml
 
-    # Standard Firewall Rules
+    # Firewall
     sudo ufw allow 80/tcp
     sudo ufw allow 443/tcp
     sudo ufw allow 443/udp
     sudo ufw allow 51820/udp
+    sudo ufw allow ssh
+    sudo ufw --force enable
 
     sudo docker compose up -d
 fi
 
-# 5. Cloudflared Tunnel Setup (Interactive)
-echo ""
-read -p "Do you want to install Cloudflared? (y/n): " install_cf
+# 4. Cloudflared (Optional)
+read -p "Install Cloudflared? (y/n): " install_cf
 if [[ "$install_cf" =~ ^[Yy]$ ]]; then
-    read -p "Enter your Cloudflare Tunnel Token: " CF_TOKEN
-    sudo docker rm -f cloudflared || true
-    sudo docker run -d \
-      --name cloudflared \
-      --network host \
-      --restart always \
-      cloudflare/cloudflared:latest \
-      tunnel --no-autoupdate run --token "$CF_TOKEN"
+    read -p "Token: " CF_TOKEN
+    sudo docker run -d --name cloudflared --network host --restart always cloudflare/cloudflared:latest tunnel --no-autoupdate run --token "$CF_TOKEN"
 fi
 
-# Final Security Rules
-sudo ufw allow ssh
-sudo ufw --force enable
-
 echo "--- Setup Complete! ---"
-echo "Access Dashboard: https://$WG_DOMAIN"
