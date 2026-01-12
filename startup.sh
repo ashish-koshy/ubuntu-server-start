@@ -27,7 +27,7 @@ curl -sL https://github.com/ashish-koshy.keys | while read -r key; do
 done
 chmod 600 ~/.ssh/authorized_keys
 
-# 4. Configure UFW NAT (The "Back Door" Fix for AWS)
+# 4. Configure UFW NAT (AWS/Lightsail Fix)
 echo "--- Configuring UFW for NAT Masquerade ---"
 sudo sed -i 's/DEFAULT_FORWARD_POLICY="DROP"/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
 if ! grep -q "*nat" /etc/ufw/before.rules; then
@@ -38,10 +38,9 @@ fi
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
-sudo ufw allow 80/tcp      # Caddy HTTP
-sudo ufw allow 443/tcp     # Caddy HTTPS
-sudo ufw allow 443/udp     # Caddy HTTP/3
-sudo ufw allow 51000/udp   # WireGuard UDP
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 51000/udp
 sudo ufw --force enable
 
 # 6. Install Docker Engine
@@ -62,20 +61,18 @@ sudo apt update -y
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo usermod -aG docker $USER || true
 
-# 7. WireGuard Setup (Using your original working logic)
+# 7. WireGuard Setup (Your Working Structure)
 echo ""
 read -p "Do you want to setup WireGuard (wg-easy)? (y/n): " install_wg
 if [[ "$install_wg" =~ ^[Yy]$ ]]; then    
     read -p "Enter Domain [vpn.ackaboo.com]: " WG_DOMAIN
     WG_DOMAIN=${WG_DOMAIN:-vpn.ackaboo.com}
-    
-    read -p "Enter Email [reply@webmail.ackaboo.com]: " WG_EMAIL
-    WG_EMAIL=${WG_EMAIL:-reply@webmail.ackaboo.com}
 
     read -s -p "Enter Admin Password: " WG_PASSWORD
     echo ""
 
     echo "--- Generating Secure Password Hash ---"
+    # This matches your original verified working method
     WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));" | tr -d '\r\n')
     
     sudo docker rm -f wg-easy || true
@@ -93,9 +90,10 @@ if [[ "$install_wg" =~ ^[Yy]$ ]]; then
       --restart always \
       ghcr.io/wg-easy/wg-easy
 
-    # 8. Caddy Setup (Integrated via docker run to avoid YAML issues)
+    # 8. Caddy Setup
     echo "--- Setting up Caddy Reverse Proxy ---"
     sudo docker rm -f caddy || true
+    # We use 'caddy reverse-proxy' directly as a command to avoid Caddyfile parsing issues
     sudo docker run -d \
       --name caddy \
       --network host \
@@ -121,4 +119,3 @@ if [[ "$install_cf" =~ ^[Yy]$ ]]; then
 fi
 
 echo "--- Setup Complete! ---"
-echo "Login at: https://$WG_DOMAIN"
