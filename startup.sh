@@ -1,42 +1,32 @@
 #!/bin/bash
 set -e
-
 echo "--- Starting Machine Setup (Bridge Network) ---"
-
 # 1. System Prep (Standard)
 sudo apt update -y
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
-sudo apt install -y git curl ufw net-tools ca-certificates
-
+sudo apt install -y git curl ufw net-tools ca-certificates iptables-persistent
 # 2. Docker Install (Standard)
 if ! [ -x "$(command -v docker)" ]; then
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
     sudo usermod -aG docker $USER || true
 fi
-
 echo "--- Cleaning up ports and old containers ---"
 sudo docker rm -f wg-easy caddy || true
 sudo fuser -k 51000/udp || true
-
 # 3. Create the Docker Bridge Network
 # This allows Caddy to find wg-easy by its container name
 sudo docker network create vpn_network || true
-
 # 4. Inputs & Defaults
 read -p "Enter Domain [vpn.ackaboo.com]: " WG_DOMAIN
 WG_DOMAIN=${WG_DOMAIN:-vpn.ackaboo.com}
-
 read -p "Enter Email [reply@webmail.ackaboo.com]: " WG_EMAIL
 WG_EMAIL=${WG_EMAIL:-reply@webmail.ackaboo.com}
-
 read -s -p "Enter Admin Password: " WG_PASSWORD
 echo ""
-
 # 5. Generate Hash (Your proven method)
 WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));" | tr -d '\r\n')
-
 # 6. Run WireGuard (Bridge Mode)
 # We publish only the VPN UDP port to the host
 sudo docker rm -f wg-easy || true
@@ -54,7 +44,6 @@ sudo docker run -d \
   --cap-add=SYS_MODULE \
   --restart always \
   ghcr.io/wg-easy/wg-easy
-
 # 7. Run Caddy (Bridge Mode)
 # We publish 80/443 to the host and proxy to the wg-easy container name
 sudo docker rm -f caddy || true
@@ -69,13 +58,18 @@ sudo docker run -d \
   -v caddy_config:/config \
   caddy:2.7-alpine \
   caddy reverse-proxy --from "$WG_DOMAIN" --to wg-easy:8080
-
 # 8. Firewall
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
 sudo ufw allow 51000/udp
+sudo ufw allow 53/udp
 sudo ufw allow ssh
 sudo ufw --force enable
-
+# 9. Port redirect for restrictive networks (UDP 53 -> 51000)
+# Allows clients on networks that block non-standard UDP ports to connect via port 53
+sudo iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-port 51000 2>/dev/null || \
+sudo iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 51000
+sudo netfilter-persistent save
 echo "--- Setup Complete! ---"
 echo "Admin: https://$WG_DOMAIN"
+echo "WireGuard ports: 51000/udp (standard), 53/udp (restrictive networks)"
