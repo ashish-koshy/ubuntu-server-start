@@ -25,3 +25,17 @@ while IFS= read -r key; do
     fi
 done <<< "$GITHUB_KEYS"
 echo "--- SSH keys setup complete ---"
+
+read -p "Do you want to setup a Cloudflared tunnel with Docker? (y/n): " SETUP_CLOUDFLARED
+if [[ "$SETUP_CLOUDFLARED" =~ ^[Yy]$ ]]; then
+    read -p "Enter your Cloudflare tunnel token: " TUNNEL_TOKEN
+    if [ -n "$TUNNEL_TOKEN" ]; then
+        echo "--- Setting up Cloudflared tunnel ---"
+        docker run -d --name cloudflared --restart unless-stopped \
+            cloudflare/cloudflared:latest tunnel --no-autoupdate run \
+            --token "$TUNNEL_TOKEN"
+        echo "--- Cloudflared tunnel setup complete ---"
+    else
+        echo "No token provided, skipping Cloudflared setup."
+    fi
+fi
