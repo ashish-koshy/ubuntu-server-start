@@ -1,17 +1,12 @@
 #!/bin/bash
 set -e
 echo "--- Starting Machine Setup (Bridge Network) ---"
-# 1. System Prep (Standard)
-sudo apt update -y
+# 1. Install Docker and common tools
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/init.sh"
+# 2. System Prep (WireGuard specific)
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
-sudo apt install -y git curl ufw net-tools ca-certificates
-# 2. Docker Install (Standard)
-if ! [ -x "$(command -v docker)" ]; then
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
-    sudo usermod -aG docker $USER || true
-fi
 echo "--- Cleaning up ports and old containers ---"
 sudo docker rm -f wg-easy caddy || true
 sudo fuser -k 51000/udp || true
