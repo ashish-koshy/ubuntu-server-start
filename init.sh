@@ -39,3 +39,15 @@ if [[ "$SETUP_CLOUDFLARED" =~ ^[Yy]$ ]]; then
         echo "No token provided, skipping Cloudflared setup."
     fi
 fi
+
+read -p "Do you want to enable swap (2GB)? (y/n): " SETUP_SWAP
+if [[ "$SETUP_SWAP" =~ ^[Yy]$ ]]; then
+    echo "--- Setting up swap ---"
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    echo "--- Swap setup complete ---"
+    free -h
+fi
