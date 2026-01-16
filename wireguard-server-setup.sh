@@ -5,7 +5,7 @@ echo "--- Starting Machine Setup (Bridge Network) ---"
 sudo apt update -y
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
-sudo apt install -y git curl ufw net-tools ca-certificates iptables-persistent
+sudo apt install -y git curl ufw net-tools ca-certificates
 # 2. Docker Install (Standard)
 if ! [ -x "$(command -v docker)" ]; then
     curl -fsSL https://get.docker.com -o get-docker.sh
@@ -67,9 +67,15 @@ sudo ufw allow ssh
 sudo ufw --force enable
 # 9. Port redirect for restrictive networks (UDP 53 -> 51000)
 # Allows clients on networks that block non-standard UDP ports to connect via port 53
-sudo iptables -t nat -C PREROUTING -p udp --dport 53 -j REDIRECT --to-port 51000 2>/dev/null || \
-sudo iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 51000
-sudo netfilter-persistent save
+# Add NAT rule to UFW's before.rules for persistence across reboots
+NAT_RULE="*nat
+:PREROUTING ACCEPT [0:0]
+-A PREROUTING -p udp --dport 53 -j REDIRECT --to-port 51000
+COMMIT"
+if ! grep -q "PREROUTING -p udp --dport 53" /etc/ufw/before.rules 2>/dev/null; then
+    echo "$NAT_RULE" | sudo tee -a /etc/ufw/before.rules > /dev/null
+    sudo ufw reload
+fi
 echo "--- Setup Complete! ---"
 echo "Admin: https://$WG_DOMAIN"
 echo "WireGuard ports: 51000/udp (standard), 53/udp (restrictive networks)"
