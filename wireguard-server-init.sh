@@ -23,54 +23,28 @@ echo ""
 # 5. Generate Hash (Your proven method)
 WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));" | tr -d '\r\n')
 # 6. Run WireGuard (Bridge Mode)
-# We publish only the VPN UDP port to the host
+# Dashboard only accessible via VPN (bound to 10.8.0.1)
 sudo docker rm -f wg-easy || true
 sudo docker run -d \
   --name wg-easy \
-  --network vpn_network \
   --env WG_HOST="$WG_DOMAIN" \
   --env PASSWORD_HASH="${WGPW_HASH}" \
   --env PORT=8080 \
   --env WG_PORT=51000 \
   -p 51000:51000/udp \
+  -p 10.8.0.1:8080:8080 \
   -v ~/.wg-easy:/etc/wireguard \
   -v /lib/modules:/lib/modules:ro \
   --cap-add=NET_ADMIN \
   --cap-add=SYS_MODULE \
   --restart always \
   ghcr.io/wg-easy/wg-easy
-# 7. Run Caddy (Bridge Mode)
-# Dashboard only accessible from VPN subnet (10.8.0.0/24)
-sudo mkdir -p /etc/caddy
-cat <<EOF | sudo tee /etc/caddy/Caddyfile
-$WG_DOMAIN {
-    @vpn remote_ip 10.8.0.0/24
-    handle @vpn {
-        reverse_proxy wg-easy:8080
-    }
-    respond "Forbidden" 403
-}
-EOF
-sudo docker rm -f caddy || true
-sudo docker run -d \
-  --name caddy \
-  --network vpn_network \
-  -p 80:80 \
-  -p 443:443 \
-  -p 443:443/udp \
-  --restart always \
-  -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
-  -v caddy_data:/data \
-  -v caddy_config:/config \
-  caddy:2.7-alpine
-# 8. Firewall
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+# 7. Firewall
 sudo ufw allow 51000/udp
 sudo ufw allow 53/udp
 sudo ufw allow ssh
 sudo ufw --force enable
-# 9. Port redirect for restrictive networks (UDP 53 -> 51000)
+# 8. Port redirect for restrictive networks (UDP 53 -> 51000)
 # Allows clients on networks that block non-standard UDP ports to connect via port 53
 # Add NAT rule to UFW's before.rules for persistence across reboots
 NAT_RULE="*nat
@@ -82,5 +56,5 @@ if ! grep -q "PREROUTING -p udp --dport 53" /etc/ufw/before.rules 2>/dev/null; t
     sudo ufw reload
 fi
 echo "--- Setup Complete! ---"
-echo "Admin: https://$WG_DOMAIN"
+echo "Admin: http://10.8.0.1:8080 (VPN only)"
 echo "WireGuard ports: 51000/udp (standard), 53/udp (restrictive networks)"
