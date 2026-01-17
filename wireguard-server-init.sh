@@ -22,7 +22,8 @@ read -s -p "Enter Admin Password: " WG_PASSWORD
 echo ""
 # 5. Generate Hash (Your proven method)
 WGPW_HASH=$(docker run --rm ghcr.io/wg-easy/wg-easy:14 node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync('$WG_PASSWORD', 10));" | tr -d '\r\n')
-# 6. Run WireGuard
+# 6. Run WireGuard (Bridge Mode)
+# Dashboard only accessible via VPN (bound to 10.8.0.1)
 sudo docker rm -f wg-easy || true
 sudo docker run -d \
   --name wg-easy \
@@ -31,16 +32,15 @@ sudo docker run -d \
   --env PORT=8080 \
   --env WG_PORT=51000 \
   -p 51000:51000/udp \
-  -p 8080:8080 \
+  -p 10.8.0.1:8080:8080 \
   -v ~/.wg-easy:/etc/wireguard \
   -v /lib/modules:/lib/modules:ro \
   --cap-add=NET_ADMIN \
   --cap-add=SYS_MODULE \
   --restart always \
   ghcr.io/wg-easy/wg-easy
-# 7. Firewall - dashboard only from VPN subnet
+# 7. Firewall
 sudo ufw allow 51000/udp
-sudo ufw allow from 10.8.0.0/24 to any port 8080
 sudo ufw allow 53/udp
 sudo ufw allow ssh
 sudo ufw --force enable
@@ -56,5 +56,5 @@ if ! grep -q "PREROUTING -p udp --dport 53" /etc/ufw/before.rules 2>/dev/null; t
     sudo ufw reload
 fi
 echo "--- Setup Complete! ---"
-echo "Admin: http://<server-ip>:8080 (VPN only)"
+echo "Admin: http://10.8.0.1:8080 (VPN only)"
 echo "WireGuard ports: 51000/udp (standard), 53/udp (restrictive networks)"
