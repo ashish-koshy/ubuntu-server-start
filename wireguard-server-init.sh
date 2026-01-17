@@ -40,7 +40,17 @@ sudo docker run -d \
   --restart always \
   ghcr.io/wg-easy/wg-easy
 # 7. Run Caddy (Bridge Mode)
-# We publish 80/443 to the host and proxy to the wg-easy container name
+# Dashboard only accessible from VPN subnet (10.8.0.0/24)
+sudo mkdir -p /etc/caddy
+cat <<EOF | sudo tee /etc/caddy/Caddyfile
+$WG_DOMAIN {
+    @vpn remote_ip 10.8.0.0/24
+    handle @vpn {
+        reverse_proxy wg-easy:8080
+    }
+    respond "Forbidden" 403
+}
+EOF
 sudo docker rm -f caddy || true
 sudo docker run -d \
   --name caddy \
@@ -49,10 +59,10 @@ sudo docker run -d \
   -p 443:443 \
   -p 443:443/udp \
   --restart always \
+  -v /etc/caddy/Caddyfile:/etc/caddy/Caddyfile:ro \
   -v caddy_data:/data \
   -v caddy_config:/config \
-  caddy:2.7-alpine \
-  caddy reverse-proxy --from "$WG_DOMAIN" --to wg-easy:8080
+  caddy:2.7-alpine
 # 8. Firewall
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
